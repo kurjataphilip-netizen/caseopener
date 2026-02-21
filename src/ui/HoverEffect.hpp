@@ -3,6 +3,7 @@
 #include <SFML/Graphics.hpp>
 #include <cmath>
 #include <algorithm>
+#include <random>
 
 // ── HoverEffect ───────────────────────────────────────────────────────────────
 // Manages a smoothly animated float value that eases to 1.0 when hovered
