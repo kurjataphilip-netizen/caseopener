@@ -21,7 +21,7 @@ include(FetchContent)
 FetchContent_Declare(nlohmann_json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
     DOWNLOAD_NO_EXTRACT TRUE
-    DOWNLOAD_DIR ${CMAKE_BINARY_DIR}/_json)
+    DOWNLOAD_DIR ${CMAKE_BINARY_DIR}/_json/nlohmann)
 FetchContent_MakeAvailable(nlohmann_json)
 
 add_library(nlohmann_json_iface INTERFACE)
