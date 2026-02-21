@@ -568,7 +568,7 @@ void GameScreen::render(sf::RenderWindow& window)
     {
         const float alpha = std::min(1.f, it->timer / 0.4f) * std::min(1.f, it->timer);
         sf::Text t;
-        t.setFont(m_headerLabel.getFont());
+        t.setFont(*m_headerLabel.getFont());
         t.setCharacterSize(15);
         sf::Color col = it->colour;
         col.a = static_cast<sf::Uint8>(alpha * 230.f);
