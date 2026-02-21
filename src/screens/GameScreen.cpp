@@ -13,7 +13,7 @@
 GameScreen::GameScreen(Game& game)
     : m_reelManager(game.font())
     , m_caseInfoPanel(game.font())
-    , m_freeCaseReward(30.f * 60.f)   // 30 minute cooldown
+    , m_freeCaseReward(30.f * 60.f)
     , m_save("save.json")
 {
     buildHeaderBar(game);
@@ -22,8 +22,8 @@ GameScreen::GameScreen(Game& game)
     buildOpenCountButtons(game);
     buildActionButtons(game);
 
-    const float W = static_cast<float>(Game::WIDTH);
-    const float H = static_cast<float>(Game::HEIGHT);
+    const float W = game.width();
+    const float H = game.height();
 
     m_inventoryUI = std::make_unique<InventoryUI>(
         sf::FloatRect(0.f, CONTENT_Y, W, H - CONTENT_Y),
@@ -44,13 +44,15 @@ GameScreen::GameScreen(Game& game)
         m_inventory.addItem(item);
         const int rar = static_cast<int>(item.rarity());
         AudioManager::instance().playRevealForRarity(rar);
+
+        // FIX: Sparkles spawn at screen centre of trade-up panel, not window centre
         if (rar >= static_cast<int>(Rarity::Classified))
         {
-            // Spawn sparkles on rare trade-up result
+            const int   count  = (rar >= 6) ? 80 : 50;
+            const float spread = (rar >= 6) ? 250.f : 160.f;
             m_sparkles.emplace_back(
-                sf::Vector2f(static_cast<float>(Game::WIDTH)  / 2.f,
-                             static_cast<float>(Game::HEIGHT) / 2.f),
-                item.rarityColor(), 50);
+                sf::Vector2f(game.width() / 2.f, game.height() / 2.f),
+                item.rarityColor(), count, spread);
         }
         char buf[64];
         std::snprintf(buf, sizeof(buf), "Trade up! Got: %s", item.displayName().c_str());
@@ -66,7 +68,7 @@ GameScreen::GameScreen(Game& game)
         m_freeCaseReward.loadCooldownEnd(sd.freeCaseCooldownEnd);
     }
 
-    // Free case button positioned bottom-right of open tab
+    // Free case button
     m_freeCaseButton = FreeCaseButton(game.font(), m_freeCaseReward,
                                       { W - FreeCaseButton::SIZE - 16.f,
                                         H - FreeCaseButton::SIZE - 12.f });
@@ -76,6 +78,7 @@ GameScreen::GameScreen(Game& game)
     m_balanceText.setCharacterSize(14);
     m_balanceText.setFillColor(sf::Color(160, 220, 160));
 
+    // FIX: pass window size to prepare() via the callback so layout is correct
     m_reelManager.setOnAllComplete([this, &game](std::vector<Item> items)
     {
         int maxRar = 0;
@@ -84,17 +87,23 @@ GameScreen::GameScreen(Game& game)
 
         AudioManager::instance().playRevealForRarity(maxRar);
 
-        // Sparkles for Classified+
+        // FIX: sparkles spawn at each reel's individual winner card position
         if (maxRar >= static_cast<int>(Rarity::Classified))
         {
-            for (const auto& item : items)
+            for (std::size_t i = 0; i < items.size(); ++i)
             {
-                if (static_cast<int>(item.rarity()) >= static_cast<int>(Rarity::Classified))
-                {
-                    m_sparkles.emplace_back(
-                        sf::Vector2f(static_cast<float>(Game::WIDTH) / 2.f, 300.f),
-                        item.rarityColor(), 60);
-                }
+                const auto& item = items[i];
+                if (static_cast<int>(item.rarity()) < static_cast<int>(Rarity::Classified))
+                    continue;
+
+                // Get the screen position of this specific reel's winner card
+                sf::Vector2f origin = m_reelManager.winnerCentre(i);
+                if (origin.x < 0.f)
+                    origin = { game.width() / 2.f, game.height() / 2.f };
+
+                const int   count  = (static_cast<int>(item.rarity()) >= 6) ? 80 : 55;
+                const float spread = (static_cast<int>(item.rarity()) >= 6) ? 240.f : 160.f;
+                m_sparkles.emplace_back(origin, item.rarityColor(), count, spread);
             }
         }
 
@@ -111,7 +120,7 @@ GameScreen::~GameScreen() {}
 // ═══════════════════════════════════════════════════════════════════════════
 void GameScreen::buildHeaderBar(Game& game)
 {
-    const float W = static_cast<float>(Game::WIDTH);
+    const float W = game.width();
     const sf::Font& font = game.font();
 
     m_headerBar.setSize({ W, HEADER_H });
@@ -166,9 +175,9 @@ void GameScreen::buildTabBar(Game& game)
     const float tabW = 140.f;
     const float tabH = TABBAR_H - 2.f;
 
-    m_tabOpen = Button(font, "OPEN",      { 0.f,          HEADER_H + 1.f }, { tabW, tabH }, 13);
-    m_tabInventory = Button(font, "INVENTORY",{ tabW + 2.f,   HEADER_H + 1.f }, { tabW, tabH }, 13);
-    m_tabTradeUp   = Button(font, "TRADE UP", { tabW*2.f+4.f, HEADER_H + 1.f }, { tabW, tabH }, 13);
+    m_tabOpen      = Button(font, "OPEN",      { 0.f,          HEADER_H + 1.f }, { tabW, tabH }, 13);
+    m_tabInventory = Button(font, "INVENTORY", { tabW + 2.f,   HEADER_H + 1.f }, { tabW, tabH }, 13);
+    m_tabTradeUp   = Button(font, "TRADE UP",  { tabW*2.f+4.f, HEADER_H + 1.f }, { tabW, tabH }, 13);
 
     for (auto* btn : { &m_tabOpen, &m_tabInventory, &m_tabTradeUp })
     {
@@ -183,16 +192,16 @@ void GameScreen::buildTabBar(Game& game)
 
 void GameScreen::buildCaseSelector(Game& game)
 {
-    const sf::Font& font = game.font();
-    const auto& cases  = CaseRegistry::instance().sortedByPrice();
-    const float W      = static_cast<float>(Game::WIDTH);
-    const float btnW   = 128.f;
-    const float infoW  = 22.f;
-    const float btnH   = 52.f;
-    const float gap    = 8.f;
-    const float groupW = btnW + infoW + 2.f;
-    const float totalW = static_cast<float>(cases.size()) * (groupW + gap) - gap;
-    float x = (W - totalW) / 2.f;
+    const sf::Font& font  = game.font();
+    const auto& cases     = CaseRegistry::instance().sortedByPrice();
+    const float W         = game.width();
+    const float btnW      = 128.f;
+    const float infoW     = 22.f;
+    const float btnH      = 52.f;
+    const float gap       = 8.f;
+    const float groupW    = btnW + infoW + 2.f;
+    const float totalW    = static_cast<float>(cases.size()) * (groupW + gap) - gap;
+    float x               = (W - totalW) / 2.f;
 
     m_caseSelectorBg.setSize({ W, btnH + 18.f });
     m_caseSelectorBg.setPosition(0.f, CONTENT_Y);
@@ -213,7 +222,11 @@ void GameScreen::buildCaseSelector(Game& game)
         btn.setHoverColor({ 44, 44, 72 });
         btn.setOutlineColor(sf::Color(65, 65, 105), 1.f);
         const int ci = static_cast<int>(i);
-        btn.setOnClick([this, ci](){ selectCase(ci); AudioManager::instance().play(SoundID::ButtonClick); });
+        btn.setOnClick([this, ci]()
+        {
+            selectCase(ci);
+            AudioManager::instance().play(SoundID::ButtonClick);
+        });
         m_caseButtons.push_back(std::move(btn));
 
         Button info(font, "?", { x + btnW + 2.f, CONTENT_Y + 7.f }, { infoW, btnH }, 11);
@@ -235,7 +248,7 @@ void GameScreen::buildCaseSelector(Game& game)
 void GameScreen::buildOpenCountButtons(Game& game)
 {
     const sf::Font& font = game.font();
-    const float W    = static_cast<float>(Game::WIDTH);
+    const float W    = game.width();
     const float rowY = CONTENT_Y + 78.f;
     const float btnW = 74.f, btnH = 30.f, gap = 7.f;
 
@@ -267,8 +280,8 @@ void GameScreen::buildOpenCountButtons(Game& game)
 void GameScreen::buildActionButtons(Game& game)
 {
     const sf::Font& font = game.font();
-    const float W = static_cast<float>(Game::WIDTH);
-    const float H = static_cast<float>(Game::HEIGHT);
+    const float W    = game.width();
+    const float H    = game.height();
     const float btnW = 155.f, btnH = 44.f;
     const float botY = H - btnH - 14.f;
 
@@ -348,7 +361,9 @@ void GameScreen::doOpen(Game& game)
 
     game.addBalance(-cost);
     m_lastResults.clear();
-    m_reelManager.prepare(*c, m_openCount);
+
+    // FIX: pass actual window size so MultiReelManager lays out correctly
+    m_reelManager.prepare(*c, m_openCount, game.window().getSize());
     m_reelManager.startAll();
     m_openState = OpenState::Animating;
     AudioManager::instance().play(SoundID::ReelStart);
@@ -378,10 +393,13 @@ void GameScreen::claimFreeCase(Game& game)
 
     if (static_cast<int>(item->rarity()) >= static_cast<int>(Rarity::Classified))
     {
+        // Sparkles at the free case button position
+        const float W = game.width();
+        const float H = game.height();
         m_sparkles.emplace_back(
-            sf::Vector2f(static_cast<float>(Game::WIDTH) - FreeCaseButton::SIZE / 2.f - 16.f,
-                         static_cast<float>(Game::HEIGHT) - FreeCaseButton::SIZE / 2.f - 12.f),
-            item->rarityColor(), 60);
+            sf::Vector2f(W - FreeCaseButton::SIZE / 2.f - 16.f,
+                         H - FreeCaseButton::SIZE / 2.f - 12.f),
+            item->rarityColor(), 60, 180.f);
     }
 }
 
@@ -434,15 +452,18 @@ void GameScreen::handleEvent(const sf::Event& event, Game& game)
         return;
     }
 
-    // Open tab
+    // Open tab events
     for (auto& b : m_caseButtons)  b.handleEvent(event, game.window());
     for (auto& b : m_infoButtons)  b.handleEvent(event, game.window());
     for (auto& b : m_countButtons) b.handleEvent(event, game.window());
     m_freeCaseButton.handleEvent(event, game.window());
 
-    if (m_openState == OpenState::Idle)           m_openButton.handleEvent(event, game.window());
-    if (m_openState == OpenState::Animating)      m_skipButton.handleEvent(event, game.window());
-    if (m_openState == OpenState::ShowingResults) m_collectButton.handleEvent(event, game.window());
+    if (m_openState == OpenState::Idle)
+        m_openButton.handleEvent(event, game.window());
+    if (m_openState == OpenState::Animating)
+        m_skipButton.handleEvent(event, game.window());
+    if (m_openState == OpenState::ShowingResults)
+        m_collectButton.handleEvent(event, game.window());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -454,7 +475,6 @@ void GameScreen::update(float dt, Game& game)
 
     m_caseInfoPanel.update(dt);
 
-    // Header buttons
     m_backButton.update(mouse, dt);
     m_muteButton.update(mouse, dt);
     m_saveButton.update(mouse, dt);
@@ -493,13 +513,17 @@ void GameScreen::update(float dt, Game& game)
 
     // Sparkles
     for (auto& s : m_sparkles) s.update(dt);
-    m_sparkles.erase(std::remove_if(m_sparkles.begin(), m_sparkles.end(),
-        [](const SparkleEmitter& e){ return e.isDead(); }), m_sparkles.end());
+    m_sparkles.erase(
+        std::remove_if(m_sparkles.begin(), m_sparkles.end(),
+            [](const SparkleEmitter& e){ return e.isDead(); }),
+        m_sparkles.end());
 
     // Toasts
     for (auto& t : m_toasts) t.timer -= dt;
-    m_toasts.erase(std::remove_if(m_toasts.begin(), m_toasts.end(),
-        [](const Toast& t){ return t.timer <= 0.f; }), m_toasts.end());
+    m_toasts.erase(
+        std::remove_if(m_toasts.begin(), m_toasts.end(),
+            [](const Toast& t){ return t.timer <= 0.f; }),
+        m_toasts.end());
 
     // Balance HUD
     char buf[64];
@@ -508,8 +532,7 @@ void GameScreen::update(float dt, Game& game)
     {
         sf::FloatRect tb = m_balanceText.getLocalBounds();
         m_balanceText.setOrigin(tb.left + tb.width / 2.f, tb.top);
-        m_balanceText.setPosition(static_cast<float>(Game::WIDTH) / 2.f,
-                                  HEADER_H / 2.f - 8.f);
+        m_balanceText.setPosition(game.width() / 2.f, HEADER_H / 2.f - 8.f);
     }
 }
 
@@ -518,9 +541,6 @@ void GameScreen::update(float dt, Game& game)
 // ═══════════════════════════════════════════════════════════════════════════
 void GameScreen::render(sf::RenderWindow& window)
 {
-    // Dummy dt for render-only effects
-    const float dt = 1.f / 60.f;
-
     window.draw(m_headerBar);
     window.draw(m_headerLabel);
     window.draw(m_balanceText);
@@ -529,7 +549,7 @@ void GameScreen::render(sf::RenderWindow& window)
     window.draw(m_saveButton);
     window.draw(m_headerDivider);
 
-    // Tabs
+    // Tabs with active underline
     auto drawTab = [&](Button& btn, bool active)
     {
         window.draw(btn);
@@ -559,11 +579,11 @@ void GameScreen::render(sf::RenderWindow& window)
         renderOpenTab(window);
     }
 
-    // Sparkles (drawn over everything)
+    // Sparkles drawn over everything
     for (auto& s : m_sparkles) s.render(window);
 
     // Toasts
-    float toastY = static_cast<float>(Game::HEIGHT) - 80.f;
+    float toastY = static_cast<float>(window.getSize().y) - 80.f;
     for (auto it = m_toasts.rbegin(); it != m_toasts.rend(); ++it)
     {
         const float alpha = std::min(1.f, it->timer / 0.4f) * std::min(1.f, it->timer);
@@ -576,27 +596,39 @@ void GameScreen::render(sf::RenderWindow& window)
         t.setString(it->msg);
         sf::FloatRect tb = t.getLocalBounds();
         t.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
-        t.setPosition(static_cast<float>(Game::WIDTH) / 2.f, toastY);
+        t.setPosition(static_cast<float>(window.getSize().x) / 2.f, toastY);
         window.draw(t);
         toastY -= 26.f;
     }
 
-    // Modal info panel
+    // F11 hint in bottom corner
+    {
+        sf::Text hint;
+        hint.setFont(*m_headerLabel.getFont());
+        hint.setCharacterSize(10);
+        hint.setFillColor(sf::Color(45, 45, 68));
+        hint.setString("F11 fullscreen");
+        hint.setPosition(4.f, static_cast<float>(window.getSize().y) - 14.f);
+        window.draw(hint);
+    }
+
+    // Modal info panel (always on top)
     m_caseInfoPanel.render(window);
 }
 
 void GameScreen::renderOpenTab(sf::RenderWindow& window)
 {
-    const float W = static_cast<float>(Game::WIDTH);
-    const float H = static_cast<float>(Game::HEIGHT);
+    const float W = static_cast<float>(window.getSize().x);
+    const float H = static_cast<float>(window.getSize().y);
 
-    // Case selector
+    // Case selector bar
     window.draw(m_caseSelectorBg);
     for (auto& b : m_caseButtons) window.draw(b);
     for (auto& b : m_infoButtons) window.draw(b);
 
-    // Count buttons + underline
-    const OpenCount counts[] = {OpenCount::One,OpenCount::Three,OpenCount::Five,OpenCount::Ten};
+    // Count buttons with active underline
+    const OpenCount counts[] = {OpenCount::One, OpenCount::Three,
+                                 OpenCount::Five, OpenCount::Ten};
     for (int i = 0; i < 4; ++i)
     {
         window.draw(m_countButtons[i]);
@@ -610,31 +642,52 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
         }
     }
 
-    // Case cost info
+    // FIX: Clean two-line cost display (no broken concatenated string)
     {
         const auto& cases = CaseRegistry::instance().sortedByPrice();
         if (m_selectedCase < static_cast<int>(cases.size()))
         {
-            const Case* c = cases[m_selectedCase];
-            const float cost = c->price() * static_cast<float>(m_openCount);
-            char buf[128];
-            std::snprintf(buf, sizeof(buf), "%s  |  $%.2f × %d = $%.2f",
-                          c->displayName().c_str(), c->price(),
-                          static_cast<int>(m_openCount), cost);
+            const Case* c   = cases[m_selectedCase];
+            const int   n   = static_cast<int>(m_openCount);
+            const float cost = c->price() * n;
+            const float infoY = CONTENT_Y + 118.f;
 
-            sf::Text info;
-            info.setFont(*m_headerLabel.getFont());
-            info.setCharacterSize(13);
-            info.setString(buf);
-            info.setFillColor(sf::Color(130, 175, 130));
-            sf::FloatRect ib = info.getLocalBounds();
-            info.setOrigin(ib.left + ib.width / 2.f, ib.top);
-            info.setPosition(W / 2.f, CONTENT_Y + 118.f);
-            window.draw(info);
+            // Line 1: case name
+            sf::Text name;
+            name.setFont(*m_headerLabel.getFont());
+            name.setCharacterSize(14);
+            name.setFillColor(sf::Color(180, 180, 200));
+            name.setString(c->displayName());
+            {
+                sf::FloatRect nb = name.getLocalBounds();
+                name.setOrigin(nb.left + nb.width / 2.f, nb.top);
+                name.setPosition(W / 2.f, infoY);
+            }
+            window.draw(name);
+
+            // Line 2: price formula — properly formatted
+            char calcBuf[64];
+            if (n == 1)
+                std::snprintf(calcBuf, sizeof(calcBuf), "$%.2f", cost);
+            else
+                std::snprintf(calcBuf, sizeof(calcBuf), "%d \xc3\x97 $%.2f = $%.2f",
+                              n, c->price(), cost);  // \xc3\x97 = UTF-8 ×
+
+            sf::Text calc;
+            calc.setFont(*m_headerLabel.getFont());
+            calc.setCharacterSize(13);
+            calc.setFillColor(sf::Color(130, 200, 130));
+            calc.setString(calcBuf);
+            {
+                sf::FloatRect cb = calc.getLocalBounds();
+                calc.setOrigin(cb.left + cb.width / 2.f, cb.top);
+                calc.setPosition(W / 2.f, infoY + 20.f);
+            }
+            window.draw(calc);
         }
     }
 
-    // Reel or idle placeholder
+    // Reel area or idle placeholder
     if (m_openState == OpenState::Animating ||
         m_openState == OpenState::ShowingResults)
     {
@@ -653,9 +706,9 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
         window.draw(ph);
     }
 
+    // Results strip
     if (m_openState == OpenState::ShowingResults)
     {
-        // Results strip
         const float stripH = 108.f;
         const float stripY = H - stripH - 62.f;
 
@@ -663,13 +716,14 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
         strip.setFillColor(sf::Color(10, 10, 20, 238));
         strip.setPosition(0.f, stripY);
         window.draw(strip);
+
         sf::RectangleShape topLine({ W, 2.f });
         topLine.setFillColor(sf::Color(50, 50, 80));
         topLine.setPosition(0.f, stripY);
         window.draw(topLine);
 
         const float cW = 88.f, cH = 78.f, cGap = 7.f;
-        const int cnt = static_cast<int>(m_lastResults.size());
+        const int   cnt = static_cast<int>(m_lastResults.size());
         const float totalW2 = cnt * (cW + cGap) - cGap;
         float x = (W - totalW2) / 2.f;
         const float y = stripY + (stripH - cH) / 2.f;
@@ -677,6 +731,7 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
         for (const Item& item : m_lastResults)
         {
             const sf::Color rc = item.rarityColor();
+
             sf::RectangleShape card({ cW, cH });
             card.setPosition(x, y);
             card.setFillColor(sf::Color(18, 18, 32));
@@ -689,7 +744,8 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
             bar.setPosition(x, y + cH - 3.f);
             window.draw(bar);
 
-            char vb[20]; std::snprintf(vb, sizeof(vb), "$%.0f", item.value());
+            char vb[20];
+            std::snprintf(vb, sizeof(vb), "$%.0f", item.value());
             sf::Text vt;
             vt.setFont(*m_headerLabel.getFont());
             vt.setCharacterSize(11);
@@ -720,6 +776,8 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
         window.draw(m_openButton);
         m_freeCaseButton.render(window);
     }
-    if (m_openState == OpenState::Animating)      window.draw(m_skipButton);
-    if (m_openState == OpenState::ShowingResults) window.draw(m_collectButton);
+    if (m_openState == OpenState::Animating)
+        window.draw(m_skipButton);
+    if (m_openState == OpenState::ShowingResults)
+        window.draw(m_collectButton);
 }
