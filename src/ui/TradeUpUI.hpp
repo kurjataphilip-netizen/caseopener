@@ -90,6 +90,7 @@ private:
 
     void drawInputSlot  (sf::RenderWindow& w, int slot, sf::Vector2f pos);
     void drawResultSlot (sf::RenderWindow& w, sf::Vector2f pos);
+    void drawPickerArea (sf::RenderWindow& w);
     void drawMiniCard   (sf::RenderWindow& w, const Item& item,
                          sf::FloatRect rect, bool selected);
     void drawArrow      (sf::RenderWindow& w, sf::Vector2f from, sf::Vector2f to);
