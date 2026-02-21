@@ -1,0 +1,58 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # allows manual trigger from GitHub UI
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CaseOpener-Windows
+          path: build/bin/Release/CaseOpener.exe
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SFML dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsfml-dev \
+            libgl1-mesa-dev \
+            libudev-dev \
+            libopenal-dev \
+            libvorbis-dev \
+            libflac-dev
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: CaseOpener-Linux
+          path: build/bin/CaseOpener
+          if-no-files-found: error
