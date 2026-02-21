@@ -11,8 +11,8 @@
 // Constructor / Destructor
 // ═══════════════════════════════════════════════════════════════════════════
 GameScreen::GameScreen(Game& game)
-    : m_reelManager(game.font())
-    , m_caseInfoPanel(game.font())
+    : m_reelManager(*game.font())
+    , m_caseInfoPanel(*game.font())
     , m_freeCaseReward(30.f * 60.f)   // 30 minute cooldown
     , m_save("save.json")
 {
@@ -112,7 +112,7 @@ GameScreen::~GameScreen() {}
 void GameScreen::buildHeaderBar(Game& game)
 {
     const float W = static_cast<float>(Game::WIDTH);
-    const sf::Font& font = game.font();
+    const sf::Font& font = *game.font();
 
     m_headerBar.setSize({ W, HEADER_H });
     m_headerBar.setPosition(0.f, 0.f);
@@ -516,13 +516,6 @@ void GameScreen::update(float dt, Game& game)
 // ═══════════════════════════════════════════════════════════════════════════
 // render
 // ═══════════════════════════════════════════════════════════════════════════
-#include "GameScreen.hpp"
-#include "../Game.hpp"
-#include "../items/ItemRegistry.hpp"
-#include "../core/AudioManager.hpp"
-#include <cstdio>
-#include <cmath>
-#include <algorithm>
 
 // (everything above remains identical — unchanged)
 
@@ -569,7 +562,8 @@ void GameScreen::render(sf::RenderWindow& window)
     }
     else
     {
-        renderOpenTab(window, *reinterpret_cast<Game*>(0), dt);
+        void GameScreen::render(sf::RenderWindow& window, Game& game)
+        renderOpenTab(window, game, dt);
     }
 
     for (auto& s : m_sparkles) s.render(window);
