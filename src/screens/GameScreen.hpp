@@ -39,7 +39,7 @@ private:
     void buildActionButtons   (Game& game);
 
     // Render helpers
-    void renderOpenTab    (sf::RenderWindow& w, Game& game, float dt);
+    void renderOpenTab    (sf::RenderWindow& w);
     void renderResults    (sf::RenderWindow& w);
     void renderCaseSelector(sf::RenderWindow& w);
     void renderHUD        (sf::RenderWindow& w, Game& game);
