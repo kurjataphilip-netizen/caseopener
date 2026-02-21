@@ -20,7 +20,6 @@ void MultiReelManager::prepare(const Case& sourceCase, OpenCount count,
     m_results.clear();
     m_doneCount = 0;
 
-    // BUG FIX: pass actual window size to layout
     buildLayout(n, windowSize);
 
     // Roll all winning items up-front
@@ -39,7 +38,6 @@ void MultiReelManager::prepare(const Case& sourceCase, OpenCount count,
         else     break;
     }
 
-    // Duration scales slightly with count so more reels feel snappier
     const float baseDuration = (n <= 1) ? 4.5f
                              : (n <= 3) ? 4.0f
                              : (n <= 5) ? 3.5f
@@ -58,7 +56,6 @@ void MultiReelManager::prepare(const Case& sourceCase, OpenCount count,
                 m_onAllComplete(m_results);
         });
 
-        // Stagger: 0.10 s between each reel start
         m_startDelays.push_back(static_cast<float>(i) * 0.10f);
         m_startTimers.push_back(0.f);
         m_started.push_back(false);
@@ -66,26 +63,20 @@ void MultiReelManager::prepare(const Case& sourceCase, OpenCount count,
 }
 
 // ── computeScale ─────────────────────────────────────────────────────────────
-ReelAnimation::LayoutScale MultiReelManager::computeScale(
-    int n, sf::Vector2u winSize,
-    int cols, int rows,
-    float availW, float availH) const
+// FIX: return type and parameter type are plain LayoutScale, not ReelAnimation::LayoutScale
+LayoutScale MultiReelManager::computeScale(int n, sf::Vector2u winSize,
+                                            int cols, int rows,
+                                            float availW, float availH) const
 {
-    ReelAnimation::LayoutScale s;
+    LayoutScale s;
 
-    // Minimum gap between reels
     const float hGap = (cols > 1) ? 16.f : 0.f;
     const float vGap = (rows > 1) ? 12.f : 0.f;
 
-    // Maximum reel dimensions that fit
     const float maxReelW = (availW - hGap * (cols - 1)) / cols;
     const float maxReelH = (availH - vGap * (rows - 1)) / rows;
 
-    // Derive card size from reel size (reel = 7 cards wide + gaps, card aspect ~4:3)
     const float visibleCards = static_cast<float>(ReelAnimation::VISIBLE_COLS);
-    // Start from CARD_GAP ratio
-    // reelW = cardW * visibleCards + cardGap * (visibleCards - 1)
-    // Solve: cardW = (reelW - cardGap * (visibleCards-1)) / visibleCards
     const float cardGap  = std::max(4.f, ReelAnimation::CARD_GAP * (maxReelW / ReelAnimation::REEL_W));
     const float cardW    = std::clamp((maxReelW - cardGap * (visibleCards - 1)) / visibleCards,
                                        60.f, ReelAnimation::CARD_W);
@@ -110,20 +101,18 @@ void MultiReelManager::buildLayout(int n, sf::Vector2u winSize)
     const float W = static_cast<float>(winSize.x);
     const float H = static_cast<float>(winSize.y);
 
-    // Reserve space for header, case selector, action buttons
     const float topPad    = 150.f;
     const float bottomPad = 100.f;
     const float availH    = H - topPad - bottomPad;
-    const float availW    = W - 32.f; // small horizontal margin
+    const float availW    = W - 32.f;
 
-    // Choose grid shape based on count
     int cols = 1, rows = n;
     if (n == 3)  { cols = 3; rows = 1; }
     if (n == 5)  { cols = 5; rows = 1; }
     if (n == 10) { cols = 5; rows = 2; }
 
-    // Compute scale so reels fit perfectly
-    const ReelAnimation::LayoutScale scale =
+    // FIX: plain LayoutScale, not ReelAnimation::LayoutScale
+    const LayoutScale scale =
         computeScale(n, winSize, cols, rows, availW, availH);
 
     const float rW = scale.reelW;
@@ -166,7 +155,6 @@ sf::Vector2f MultiReelManager::winnerCentre(std::size_t i) const
     const auto& scale = reel.scale();
     const sf::Vector2f tl = reel.topLeft();
 
-    // The winner card is centred on the reel's centre marker
     return { tl.x + scale.reelW / 2.f,
              tl.y + scale.reelH / 2.f };
 }
