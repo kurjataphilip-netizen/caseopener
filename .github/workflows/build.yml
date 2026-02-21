@@ -19,11 +19,18 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
+      - name: Collect release files
+        run: |
+          mkdir release
+          copy build\bin\Release\CaseOpener.exe release\
+          copy build\bin\Release\*.dll release\
+          xcopy /E /I assets release\assets
+
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: CaseOpener-Windows
-          path: build/bin/Release/CaseOpener.exe
+          path: release/
           if-no-files-found: error
 
   build-linux:
