@@ -623,7 +623,7 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
                           static_cast<int>(m_openCount), cost);
 
             sf::Text info;
-            info.setFont(m_headerLabel.getFont());
+            info.setFont(*m_headerLabel.getFont());
             info.setCharacterSize(13);
             info.setString(buf);
             info.setFillColor(sf::Color(130, 175, 130));
@@ -643,7 +643,7 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
     else
     {
         sf::Text ph;
-        ph.setFont(m_headerLabel.getFont());
+        ph.setFont(*m_headerLabel.getFont());
         ph.setCharacterSize(17);
         ph.setFillColor(sf::Color(40, 40, 65));
         ph.setString("Select a case and press OPEN CASE");
@@ -691,7 +691,7 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
 
             char vb[20]; std::snprintf(vb, sizeof(vb), "$%.0f", item.value());
             sf::Text vt;
-            vt.setFont(m_headerLabel.getFont());
+            vt.setFont(*m_headerLabel.getFont());
             vt.setCharacterSize(11);
             vt.setFillColor(sf::Color(150, 210, 150));
             vt.setString(vb);
@@ -704,7 +704,7 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window)
         }
 
         sf::Text hint;
-        hint.setFont(m_headerLabel.getFont());
+        hint.setFont(*m_headerLabel.getFont());
         hint.setCharacterSize(12);
         hint.setFillColor(sf::Color(100, 165, 100));
         hint.setString("Press COLLECT ALL to add to inventory");
