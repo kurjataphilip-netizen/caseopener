@@ -8,65 +8,49 @@
 #include "../items/Item.hpp"
 #include "../cases/Case.hpp"
 
-// ── ReelItem ──────────────────────────────────────────────────────────────────
 struct ReelItem
 {
     Item item;
     bool textureLoaded { false };
 };
 
-// ── ReelAnimation ─────────────────────────────────────────────────────────────
-// Single horizontal scrolling reel for one case opening.
-//
-// BUG FIX: sprite origin is now correctly applied before drawing.
-// IMPROVEMENT: CARD_W/H made slightly smaller for multi-reel layouts.
-//              Cards use rounded-corner RectangleShape illusion via outline.
-// ─────────────────────────────────────────────────────────────────────────────
 class ReelAnimation
 {
 public:
-    // ── Layout constants ──────────────────────────────────────────────────────
-    // These are "full-size" defaults. MultiReelManager scales them down.
     static constexpr float CARD_W       = 152.f;
     static constexpr float CARD_H       = 114.f;
     static constexpr float CARD_GAP     = 6.f;
     static constexpr float CARD_STRIDE  = CARD_W + CARD_GAP;
     static constexpr int   VISIBLE_COLS = 7;
-    static constexpr int   PADDING_CARDS = 22;  // increased for longer travel
+    static constexpr int   PADDING_CARDS = 22;
     static constexpr float REEL_W = CARD_STRIDE * VISIBLE_COLS - CARD_GAP;
     static constexpr float REEL_H = CARD_H + 26.f;
 
-    // Scaled variants used by MultiReelManager for multi-open layouts
     struct LayoutScale
     {
-        float cardW      { CARD_W    };
-        float cardH      { CARD_H    };
-        float cardGap    { CARD_GAP  };
-        float reelW      { REEL_W    };
-        float reelH      { REEL_H    };
+        float cardW      { CARD_W     };
+        float cardH      { CARD_H     };
+        float cardGap    { CARD_GAP   };
+        float reelW      { REEL_W     };
+        float reelH      { REEL_H     };
         float cardStride { CARD_STRIDE };
     };
 
     enum class Phase { Idle, Spinning, Revealing, Done };
 
-    // ── Construction ──────────────────────────────────────────────────────────
     explicit ReelAnimation(sf::Vector2f topLeft, const sf::Font& font,
-                           LayoutScale scale = {});
+                           LayoutScale scale = LayoutScale{});
 
-    // ── Setup ─────────────────────────────────────────────────────────────────
     void prepare(const Case& sourceCase, Item winningItem, float durationSecs = 4.5f);
 
-    // ── Control ───────────────────────────────────────────────────────────────
     void start();
     void skip();
 
     void setOnComplete(std::function<void(const Item&)> cb) { m_onComplete = cb; }
 
-    // ── Per-frame ─────────────────────────────────────────────────────────────
     void update(float dt);
     void render(sf::RenderWindow& window);
 
-    // ── Accessors ─────────────────────────────────────────────────────────────
     Phase        phase()   const { return m_phase; }
     bool         isDone()  const { return m_phase == Phase::Done; }
     const Item*  winner()  const
@@ -82,9 +66,8 @@ private:
     void drawCard(sf::RenderWindow& window, const ReelItem& ri,
                   sf::Vector2f centre, bool isWinner, float revealAlpha);
     void transitionToDone();
-    static float easeOutQuint(float t); // smoother deceleration
+    static float easeOutQuint(float t);
 
-    // ── State ─────────────────────────────────────────────────────────────────
     Phase        m_phase    { Phase::Idle };
     sf::Vector2f m_topLeft;
     const sf::Font* m_font  { nullptr };
@@ -106,7 +89,6 @@ private:
 
     std::function<void(const Item&)> m_onComplete;
 
-    // Reused draw objects
     sf::RectangleShape m_cardShape;
     sf::RectangleShape m_markerLine;
     sf::RectangleShape m_reelBg;
