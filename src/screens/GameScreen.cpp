@@ -11,8 +11,8 @@
 // Constructor / Destructor
 // ═══════════════════════════════════════════════════════════════════════════
 GameScreen::GameScreen(Game& game)
-    : m_reelManager(*game.font())
-    , m_caseInfoPanel(*game.font())
+    : m_reelManager(game.font())
+    , m_caseInfoPanel(game.font())
     , m_freeCaseReward(30.f * 60.f)   // 30 minute cooldown
     , m_save("save.json")
 {
@@ -72,7 +72,7 @@ GameScreen::GameScreen(Game& game)
                                         H - FreeCaseButton::SIZE - 12.f });
     m_freeCaseButton.setOnClaim([this, &game]() { claimFreeCase(game); });
 
-    m_balanceText.setFont(*game.font());
+    m_balanceText.setFont(game.font());
     m_balanceText.setCharacterSize(14);
     m_balanceText.setFillColor(sf::Color(160, 220, 160));
 
@@ -112,7 +112,7 @@ GameScreen::~GameScreen() {}
 void GameScreen::buildHeaderBar(Game& game)
 {
     const float W = static_cast<float>(Game::WIDTH);
-    const sf::Font& font = *game.font();
+    const sf::Font& font = game.font();
 
     m_headerBar.setSize({ W, HEADER_H });
     m_headerBar.setPosition(0.f, 0.f);
@@ -516,15 +516,9 @@ void GameScreen::update(float dt, Game& game)
 // ═══════════════════════════════════════════════════════════════════════════
 // render
 // ═══════════════════════════════════════════════════════════════════════════
-
-// (everything above remains identical — unchanged)
-
-// ... constructor remains identical ...
-
-// ONLY CHANGES ARE BELOW IN RENDER SECTIONS
-
 void GameScreen::render(sf::RenderWindow& window)
 {
+    // Dummy dt for render-only effects
     const float dt = 1.f / 60.f;
 
     window.draw(m_headerBar);
@@ -535,6 +529,7 @@ void GameScreen::render(sf::RenderWindow& window)
     window.draw(m_saveButton);
     window.draw(m_headerDivider);
 
+    // Tabs
     auto drawTab = [&](Button& btn, bool active)
     {
         window.draw(btn);
@@ -547,7 +542,6 @@ void GameScreen::render(sf::RenderWindow& window)
             window.draw(ul);
         }
     };
-
     drawTab(m_tabOpen,      m_activeTab == GameTab::Open);
     drawTab(m_tabInventory, m_activeTab == GameTab::Inventory);
     drawTab(m_tabTradeUp,   m_activeTab == GameTab::TradeUp);
@@ -562,59 +556,50 @@ void GameScreen::render(sf::RenderWindow& window)
     }
     else
     {
-        void GameScreen::render(sf::RenderWindow& window, Game& game)
-        renderOpenTab(window, game, dt);
+        renderOpenTab(window);
     }
 
+    // Sparkles (drawn over everything)
     for (auto& s : m_sparkles) s.render(window);
 
+    // Toasts
     float toastY = static_cast<float>(Game::HEIGHT) - 80.f;
-
     for (auto it = m_toasts.rbegin(); it != m_toasts.rend(); ++it)
     {
         const float alpha = std::min(1.f, it->timer / 0.4f) * std::min(1.f, it->timer);
-
         sf::Text t;
-        t.setFont(*m_headerLabel.getFont());   // ✅ FIXED
+        t.setFont(m_headerLabel.getFont());
         t.setCharacterSize(15);
-
         sf::Color col = it->colour;
         col.a = static_cast<sf::Uint8>(alpha * 230.f);
         t.setFillColor(col);
-
         t.setString(it->msg);
-
         sf::FloatRect tb = t.getLocalBounds();
         t.setOrigin(tb.left + tb.width / 2.f, tb.top + tb.height / 2.f);
         t.setPosition(static_cast<float>(Game::WIDTH) / 2.f, toastY);
-
         window.draw(t);
         toastY -= 26.f;
     }
 
+    // Modal info panel
     m_caseInfoPanel.render(window);
 }
 
-void GameScreen::renderOpenTab(sf::RenderWindow& window, Game& /*game*/, float /*dt*/)
+void GameScreen::renderOpenTab(sf::RenderWindow& window)
 {
     const float W = static_cast<float>(Game::WIDTH);
     const float H = static_cast<float>(Game::HEIGHT);
 
+    // Case selector
     window.draw(m_caseSelectorBg);
     for (auto& b : m_caseButtons) window.draw(b);
     for (auto& b : m_infoButtons) window.draw(b);
 
-    const OpenCount counts[] = {
-        OpenCount::One,
-        OpenCount::Three,
-        OpenCount::Five,
-        OpenCount::Ten
-    };
-
+    // Count buttons + underline
+    const OpenCount counts[] = {OpenCount::One,OpenCount::Three,OpenCount::Five,OpenCount::Ten};
     for (int i = 0; i < 4; ++i)
     {
         window.draw(m_countButtons[i]);
-
         if (counts[i] == m_openCount)
         {
             sf::FloatRect b = m_countButtons[i].bounds();
@@ -632,29 +617,24 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window, Game& /*game*/, float /
         {
             const Case* c = cases[m_selectedCase];
             const float cost = c->price() * static_cast<float>(m_openCount);
-
             char buf[128];
-            std::snprintf(buf, sizeof(buf),
-                          "%s  |  $%.2f × %d = $%.2f",
-                          c->displayName().c_str(),
-                          c->price(),
-                          static_cast<int>(m_openCount),
-                          cost);
+            std::snprintf(buf, sizeof(buf), "%s  |  $%.2f × %d = $%.2f",
+                          c->displayName().c_str(), c->price(),
+                          static_cast<int>(m_openCount), cost);
 
             sf::Text info;
-            info.setFont(*m_headerLabel.getFont());   // ✅ FIXED
+            info.setFont(m_headerLabel.getFont());
             info.setCharacterSize(13);
             info.setString(buf);
             info.setFillColor(sf::Color(130, 175, 130));
-
             sf::FloatRect ib = info.getLocalBounds();
             info.setOrigin(ib.left + ib.width / 2.f, ib.top);
             info.setPosition(W / 2.f, CONTENT_Y + 118.f);
-
             window.draw(info);
         }
     }
 
+    // Reel or idle placeholder
     if (m_openState == OpenState::Animating ||
         m_openState == OpenState::ShowingResults)
     {
@@ -663,20 +643,19 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window, Game& /*game*/, float /
     else
     {
         sf::Text ph;
-        ph.setFont(*m_headerLabel.getFont());   // ✅ FIXED
+        ph.setFont(m_headerLabel.getFont());
         ph.setCharacterSize(17);
         ph.setFillColor(sf::Color(40, 40, 65));
         ph.setString("Select a case and press OPEN CASE");
-
         sf::FloatRect pb = ph.getLocalBounds();
         ph.setOrigin(pb.left + pb.width / 2.f, pb.top + pb.height / 2.f);
         ph.setPosition(W / 2.f, (CONTENT_Y + 140.f + H - 80.f) / 2.f);
-
         window.draw(ph);
     }
 
     if (m_openState == OpenState::ShowingResults)
     {
+        // Results strip
         const float stripH = 108.f;
         const float stripY = H - stripH - 62.f;
 
@@ -684,56 +663,63 @@ void GameScreen::renderOpenTab(sf::RenderWindow& window, Game& /*game*/, float /
         strip.setFillColor(sf::Color(10, 10, 20, 238));
         strip.setPosition(0.f, stripY);
         window.draw(strip);
+        sf::RectangleShape topLine({ W, 2.f });
+        topLine.setFillColor(sf::Color(50, 50, 80));
+        topLine.setPosition(0.f, stripY);
+        window.draw(topLine);
 
-        const float cW = 88.f;
-        const float cH = 78.f;
-        const float cGap = 7.f;
-
-        float x = (W - (m_lastResults.size() * (cW + cGap) - cGap)) / 2.f;
+        const float cW = 88.f, cH = 78.f, cGap = 7.f;
+        const int cnt = static_cast<int>(m_lastResults.size());
+        const float totalW2 = cnt * (cW + cGap) - cGap;
+        float x = (W - totalW2) / 2.f;
         const float y = stripY + (stripH - cH) / 2.f;
 
         for (const Item& item : m_lastResults)
         {
-            char vb[20];
-            std::snprintf(vb, sizeof(vb), "$%.0f", item.value());
+            const sf::Color rc = item.rarityColor();
+            sf::RectangleShape card({ cW, cH });
+            card.setPosition(x, y);
+            card.setFillColor(sf::Color(18, 18, 32));
+            card.setOutlineThickness(2.f);
+            card.setOutlineColor(rc);
+            window.draw(card);
 
+            sf::RectangleShape bar({ cW, 3.f });
+            bar.setFillColor(rc);
+            bar.setPosition(x, y + cH - 3.f);
+            window.draw(bar);
+
+            char vb[20]; std::snprintf(vb, sizeof(vb), "$%.0f", item.value());
             sf::Text vt;
-            vt.setFont(*m_headerLabel.getFont());   // ✅ FIXED
+            vt.setFont(m_headerLabel.getFont());
             vt.setCharacterSize(11);
             vt.setFillColor(sf::Color(150, 210, 150));
             vt.setString(vb);
-
             sf::FloatRect vtb = vt.getLocalBounds();
             vt.setOrigin(vtb.left + vtb.width / 2.f, vtb.top);
             vt.setPosition(x + cW / 2.f, y + cH - 18.f);
-
             window.draw(vt);
 
             x += cW + cGap;
         }
 
         sf::Text hint;
-        hint.setFont(*m_headerLabel.getFont());   // ✅ FIXED
+        hint.setFont(m_headerLabel.getFont());
         hint.setCharacterSize(12);
         hint.setFillColor(sf::Color(100, 165, 100));
         hint.setString("Press COLLECT ALL to add to inventory");
-
         sf::FloatRect hb = hint.getLocalBounds();
         hint.setOrigin(hb.left + hb.width / 2.f, hb.top);
         hint.setPosition(W / 2.f, stripY - 20.f);
-
         window.draw(hint);
     }
 
+    // Action buttons
     if (m_openState == OpenState::Idle)
     {
         window.draw(m_openButton);
         m_freeCaseButton.render(window);
     }
-
-    if (m_openState == OpenState::Animating)
-        window.draw(m_skipButton);
-
-    if (m_openState == OpenState::ShowingResults)
-        window.draw(m_collectButton);
+    if (m_openState == OpenState::Animating)      window.draw(m_skipButton);
+    if (m_openState == OpenState::ShowingResults) window.draw(m_collectButton);
 }
