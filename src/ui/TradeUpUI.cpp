@@ -44,13 +44,10 @@ void TradeUpUI::setBounds(sf::FloatRect bounds)
     m_bgShape.setPosition(bounds.left, bounds.top);
     m_bgShape.setFillColor(sf::Color(14, 14, 24));
 
-    // Slot area: upper portion
-    m_slotArea  = { bounds.left, bounds.top, bounds.width, bounds.height * 0.52f };
-    // Picker area: lower portion
+    m_slotArea   = { bounds.left, bounds.top, bounds.width, bounds.height * 0.52f };
     m_pickerArea = { bounds.left, bounds.top + bounds.height * 0.52f,
                      bounds.width, bounds.height * 0.48f };
 
-    // Position buttons
     const float btnsY = m_slotArea.top + m_slotArea.height - 56.f;
     m_tradeButton.setPosition({ bounds.left + bounds.width - 180.f, btnsY });
     m_clearButton.setPosition({ bounds.left + bounds.width - 270.f, btnsY + 4.f });
@@ -59,7 +56,6 @@ void TradeUpUI::setBounds(sf::FloatRect bounds)
 // ── revalidate ────────────────────────────────────────────────────────────────
 void TradeUpUI::revalidate()
 {
-    // Collect filled slots
     std::vector<std::size_t> filled;
     for (const auto& s : m_slots)
         if (s) filled.push_back(*s);
@@ -102,7 +98,7 @@ bool TradeUpUI::isInSlots(std::size_t viewIdx) const
 
 void TradeUpUI::addToNextSlot(std::size_t viewIdx)
 {
-    if (isInSlots(viewIdx)) return; // already selected
+    if (isInSlots(viewIdx)) return;
     for (auto& s : m_slots)
     {
         if (!s)
@@ -112,7 +108,6 @@ void TradeUpUI::addToNextSlot(std::size_t viewIdx)
             return;
         }
     }
-    // All slots full — replace last
     m_slots[SLOTS - 1] = viewIdx;
     revalidate();
 }
@@ -126,7 +121,6 @@ void TradeUpUI::doTradeUp()
     for (const auto& s : m_slots)
         if (s) filled.push_back(*s);
 
-    // Sort descending so removal doesn't shift earlier indices
     auto result = TradeUp::execute(m_inventory, filled);
     if (!result.success)
     {
@@ -149,7 +143,7 @@ void TradeUpUI::handleEvent(const sf::Event& event, const sf::RenderWindow& wind
     m_tradeButton.handleEvent(event, window);
     m_clearButton.handleEvent(event, window);
 
-    // Horizontal scroll in picker
+    // FIX: increased impulse from 35 → 120 so scroll wheel feels responsive
     if (event.type == sf::Event::MouseWheelScrolled)
     {
         const sf::Vector2f mf {
@@ -157,7 +151,7 @@ void TradeUpUI::handleEvent(const sf::Event& event, const sf::RenderWindow& wind
             static_cast<float>(sf::Mouse::getPosition(window).y)
         };
         if (m_pickerArea.contains(mf))
-            m_scrollVel -= event.mouseWheelScroll.delta * 35.f;
+            m_scrollVel -= event.mouseWheelScroll.delta * 120.f;
     }
 
     // Click on input slot → remove item
@@ -169,7 +163,6 @@ void TradeUpUI::handleEvent(const sf::Event& event, const sf::RenderWindow& wind
             static_cast<float>(event.mouseButton.y)
         };
 
-        // Slot click — calculated same as in render
         const float totalSlotsW = SLOTS * SLOT_W + (SLOTS - 1) * 16.f;
         const float slotsStartX = m_slotArea.left + (m_slotArea.width * 0.35f - totalSlotsW) / 2.f;
         const float slotsY = m_slotArea.top + 60.f;
@@ -213,13 +206,12 @@ void TradeUpUI::update(float dt)
     m_tradeButton.update(sf::Mouse::getPosition());
     m_clearButton.update(sf::Mouse::getPosition());
 
-    // Scroll momentum
+    // FIX: removed * 2.5f multiplier, tightened friction 0.85 → 0.78
     if (std::abs(m_scrollVel) > 0.5f)
     {
-        m_scrollX   += m_scrollVel * dt * 2.5f;
-        m_scrollVel *= std::pow(0.85f, dt * 60.f);
+        m_scrollX   += m_scrollVel * dt;
+        m_scrollVel *= std::pow(0.78f, dt * 60.f);
 
-        // Clamp scroll
         const float maxScroll = std::max(0.f,
             static_cast<float>(m_inventory.count()) * (MINI_CARD_W + MINI_GAP)
             - m_pickerArea.width + 16.f);
@@ -248,7 +240,6 @@ void TradeUpUI::update(float dt)
             m_resultTimer += dt;
             if (m_resultTimer >= RESULT_HOLD)
             {
-                // Auto-add to inventory and return to selecting
                 if (m_result)
                 {
                     if (m_onComplete) m_onComplete(std::move(*m_result));
@@ -268,7 +259,6 @@ void TradeUpUI::render(sf::RenderWindow& window)
 {
     window.draw(m_bgShape);
 
-    // ── Title ─────────────────────────────────────────────────────────────────
     sf::Text title;
     title.setFont(*m_font);
     title.setCharacterSize(20);
@@ -287,10 +277,10 @@ void TradeUpUI::render(sf::RenderWindow& window)
     sub.setPosition(m_bounds.left + 16.f, m_bounds.top + 38.f);
     window.draw(sub);
 
-    // ── Flash animation overlay ────────────────────────────────────────────────
+    // Flash animation overlay
     if (m_state == State::Animating)
     {
-        const float t = m_flashTimer / FLASH_DURATION;
+        const float t     = m_flashTimer / FLASH_DURATION;
         const float pulse = std::sin(t * 3.14159f * 4.f);
         const sf::Uint8 alpha = static_cast<sf::Uint8>(std::abs(pulse) * 180.f);
         sf::RectangleShape flash({ m_bounds.width, m_bounds.height });
@@ -299,7 +289,7 @@ void TradeUpUI::render(sf::RenderWindow& window)
         window.draw(flash);
     }
 
-    // ── Input slots ───────────────────────────────────────────────────────────
+    // Input slots
     const float totalSlotsW = SLOTS * SLOT_W + (SLOTS - 1) * 16.f;
     const float slotsStartX = m_slotArea.left + (m_slotArea.width * 0.35f - totalSlotsW) / 2.f;
     const float slotsY      = m_slotArea.top + 60.f;
@@ -307,18 +297,18 @@ void TradeUpUI::render(sf::RenderWindow& window)
     for (int i = 0; i < SLOTS; ++i)
         drawInputSlot(window, i, { slotsStartX + i * (SLOT_W + 16.f), slotsY });
 
-    // ── Arrow → result ────────────────────────────────────────────────────────
+    // Arrow → result
     const float arrowFromX = slotsStartX + totalSlotsW + 16.f;
     const float arrowToX   = m_slotArea.left + m_slotArea.width * 0.35f
                            + (m_slotArea.width * 0.65f - RESULT_SLOT_W) / 2.f - 20.f;
     const float midY = slotsY + SLOT_H / 2.f;
     drawArrow(window, { arrowFromX, midY }, { arrowToX, midY });
 
-    // ── Result slot ───────────────────────────────────────────────────────────
+    // Result slot
     const float resultX = arrowToX + 24.f;
     drawResultSlot(window, { resultX, slotsY - 8.f });
 
-    // ── Validation message ────────────────────────────────────────────────────
+    // Validation message
     sf::Text vmsg;
     vmsg.setFont(*m_font);
     vmsg.setCharacterSize(13);
@@ -328,10 +318,9 @@ void TradeUpUI::render(sf::RenderWindow& window)
     vmsg.setPosition(m_bounds.left + 16.f, m_slotArea.top + m_slotArea.height - 48.f);
     window.draw(vmsg);
 
-    // ── Buttons ───────────────────────────────────────────────────────────────
+    // Buttons
     if (m_state == State::Selecting)
     {
-        // Dim trade button when not valid
         if (!m_validationOk)
         {
             m_tradeButton.setIdleColor ({ 35, 25, 10 });
@@ -346,7 +335,6 @@ void TradeUpUI::render(sf::RenderWindow& window)
         window.draw(m_clearButton);
     }
 
-    // ── Inventory picker ──────────────────────────────────────────────────────
     drawPickerArea(window);
 }
 
@@ -371,13 +359,11 @@ void TradeUpUI::drawInputSlot(sf::RenderWindow& window, int slot, sf::Vector2f p
             m_slotShape.setOutlineColor(rc);
             window.draw(m_slotShape);
 
-            // Item image / coloured block
             sf::RectangleShape imgBox({ SLOT_W - 16.f, SLOT_H - 28.f });
             imgBox.setFillColor(sf::Color(rc.r, rc.g, rc.b, 35));
             imgBox.setPosition(pos.x + 8.f, pos.y + 4.f);
             window.draw(imgBox);
 
-            // Wear + rarity label
             sf::Text lbl;
             lbl.setFont(*m_font);
             lbl.setCharacterSize(10);
@@ -391,7 +377,6 @@ void TradeUpUI::drawInputSlot(sf::RenderWindow& window, int slot, sf::Vector2f p
             lbl.setPosition(pos.x + SLOT_W / 2.f, pos.y + SLOT_H - 18.f);
             window.draw(lbl);
 
-            // ✕ hint
             sf::Text x;
             x.setFont(*m_font);
             x.setCharacterSize(10);
@@ -431,7 +416,6 @@ void TradeUpUI::drawResultSlot(sf::RenderWindow& window, sf::Vector2f pos)
     if (m_state == State::ShowingResult && m_result)
     {
         const sf::Color rc = m_result->rarityColor();
-        // Pulsing glow
         const float pulse = (std::sin(m_resultTimer * 4.f) + 1.f) / 2.f;
         const sf::Uint8 glowA = static_cast<sf::Uint8>(150.f + 100.f * pulse);
         rs.setFillColor(sf::Color(rc.r / 4, rc.g / 4, rc.b / 4));
@@ -439,13 +423,11 @@ void TradeUpUI::drawResultSlot(sf::RenderWindow& window, sf::Vector2f pos)
         rs.setOutlineColor(sf::Color(rc.r, rc.g, rc.b, glowA));
         window.draw(rs);
 
-        // Rarity colour block
         sf::RectangleShape imgBox({ RESULT_SLOT_W - 16.f, RESULT_SLOT_H - 30.f });
         imgBox.setFillColor(sf::Color(rc.r, rc.g, rc.b, 50));
         imgBox.setPosition(pos.x + 8.f, pos.y + 4.f);
         window.draw(imgBox);
 
-        // Labels
         sf::Text rname;
         rname.setFont(*m_font);
         rname.setCharacterSize(11);
@@ -454,8 +436,7 @@ void TradeUpUI::drawResultSlot(sf::RenderWindow& window, sf::Vector2f pos)
                         + wearTierAbbrev(m_result->wearTier()));
         sf::FloatRect rb = rname.getLocalBounds();
         rname.setOrigin(rb.left + rb.width / 2.f, rb.top);
-        rname.setPosition(pos.x + RESULT_SLOT_W / 2.f,
-                          pos.y + RESULT_SLOT_H - 22.f);
+        rname.setPosition(pos.x + RESULT_SLOT_W / 2.f, pos.y + RESULT_SLOT_H - 22.f);
         window.draw(rname);
 
         char vbuf[24];
@@ -467,13 +448,11 @@ void TradeUpUI::drawResultSlot(sf::RenderWindow& window, sf::Vector2f pos)
         val.setString(vbuf);
         sf::FloatRect vb = val.getLocalBounds();
         val.setOrigin(vb.left + vb.width / 2.f, vb.top);
-        val.setPosition(pos.x + RESULT_SLOT_W / 2.f,
-                        pos.y + RESULT_SLOT_H - 8.f);
+        val.setPosition(pos.x + RESULT_SLOT_W / 2.f, pos.y + RESULT_SLOT_H - 8.f);
         window.draw(val);
     }
     else if (m_state == State::Animating)
     {
-        // Spinning question mark
         const float t = m_flashTimer / FLASH_DURATION;
         const sf::Uint8 a = static_cast<sf::Uint8>(100.f + 155.f * t);
         rs.setFillColor(sf::Color(30, 30, 50));
@@ -493,7 +472,6 @@ void TradeUpUI::drawResultSlot(sf::RenderWindow& window, sf::Vector2f pos)
     }
     else
     {
-        // Unknown
         rs.setFillColor(sf::Color(18, 18, 30));
         rs.setOutlineThickness(1.f);
         rs.setOutlineColor(sf::Color(50, 50, 80));
@@ -520,7 +498,6 @@ void TradeUpUI::drawArrow(sf::RenderWindow& window, sf::Vector2f from, sf::Vecto
     line.setPosition(from.x, from.y - 1.5f);
     window.draw(line);
 
-    // Arrowhead (simple triangle)
     sf::ConvexShape head;
     head.setPointCount(3);
     head.setPoint(0, { 0.f, -6.f });
@@ -547,13 +524,12 @@ void TradeUpUI::drawPickerArea(sf::RenderWindow& window)
     hdr.setPosition(m_pickerArea.left + 8.f, m_pickerArea.top + 4.f);
     window.draw(hdr);
 
-    // Clip picker
     const sf::View origView = window.getView();
     {
         const sf::Vector2u ws = window.getSize();
         sf::View cv = origView;
-        const float clipY  = m_pickerArea.top + 24.f;
-        const float clipH  = m_pickerArea.height - 24.f;
+        const float clipY = m_pickerArea.top + 24.f;
+        const float clipH = m_pickerArea.height - 24.f;
         cv.setViewport({
             m_pickerArea.left / ws.x,
             clipY / ws.y,
@@ -614,13 +590,11 @@ void TradeUpUI::drawMiniCard(sf::RenderWindow& window,
                                   : sf::Color(rc.r, rc.g, rc.b, 80));
     window.draw(card);
 
-    // Rarity bar
     sf::RectangleShape bar({ rect.width, 3.f });
     bar.setFillColor(rc);
     bar.setPosition(rect.left, rect.top + rect.height - 3.f);
     window.draw(bar);
 
-    // Selected indicator
     if (selected)
     {
         sf::Text tick;
@@ -634,12 +608,12 @@ void TradeUpUI::drawMiniCard(sf::RenderWindow& window,
         window.draw(tick);
     }
 
-    // Value
     sf::Text val;
     val.setFont(*m_font);
     val.setCharacterSize(10);
     val.setFillColor(sf::Color(140, 200, 140));
-    char buf[16]; std::snprintf(buf, sizeof(buf), "$%.0f", item.value());
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "$%.0f", item.value());
     val.setString(buf);
     sf::FloatRect vb = val.getLocalBounds();
     val.setOrigin(vb.left + vb.width / 2.f, vb.top);
