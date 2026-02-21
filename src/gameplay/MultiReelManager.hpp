@@ -2,8 +2,8 @@
 
 #include <SFML/Graphics.hpp>
 #include <vector>
-#include <functional>
 #include <memory>
+#include <functional>
 
 #include "ReelAnimation.hpp"
 #include "../cases/Case.hpp"
@@ -12,66 +12,65 @@
 // ── OpenCount ─────────────────────────────────────────────────────────────────
 enum class OpenCount : int { One = 1, Three = 3, Five = 5, Ten = 10 };
 
-// ── MultiReelManager ──────────────────────────────────────────────────────────
-// Lays out N ReelAnimations on screen, handles skip-all, fires callback
-// when every reel has finished.
+// ── MultiReelManager ─────────────────────────────────────────────────────────
+// Owns N ReelAnimations, lays them out on screen, and stagger-starts them.
 //
-// Layout strategy:
-//   1 reel  → single centred reel, full-size
-//   3 reels → column of 3, vertically distributed
-//   5 reels → column of 5, smaller cards (scaled via sub-view)
-//  10 reels → 2 columns × 5
+// BUG FIX: buildLayout() was receiving default winSize={0,0}.
+//          Now takes the actual window size as a required parameter.
+//
+// IMPROVEMENT: Layout now properly scales card dimensions for 3/5/10 reels
+//              so they always fit without overlapping.
 // ─────────────────────────────────────────────────────────────────────────────
 class MultiReelManager
 {
 public:
     explicit MultiReelManager(const sf::Font& font);
 
-    // Prepare N reels for the given case. Wins are rolled here.
-    // previousResults is cleared and replaced.
-    void prepare(const Case& sourceCase, OpenCount count);
+    // Call with actual window dimensions so layout is correct.
+    void prepare(const Case& sourceCase, OpenCount count,
+                 sf::Vector2u windowSize = { 1280, 720 });
 
-    // Start all reels (staggers start times slightly for visual appeal).
     void startAll();
-
-    // Skip all running reels instantly.
     void skipAll();
 
-    // Callback: fires once all reels reach Done. Provides all winning Items.
-    void setOnAllComplete(std::function<void(std::vector<Item>)> cb)
-    { m_onAllComplete = cb; }
-
-    // Per-frame
     void update(float dt);
     void render(sf::RenderWindow& window);
 
-    // True while any reel is still spinning / revealing.
     bool isRunning() const;
+    bool allDone()   const;
 
-    // True once every reel is Done.
-    bool allDone() const;
+    void setOnAllComplete(std::function<void(std::vector<Item>)> cb)
+    {
+        m_onAllComplete = cb;
+    }
 
-    // Results (populated as each reel finishes)
     const std::vector<Item>& results() const { return m_results; }
 
-    int totalReels() const { return static_cast<int>(m_reels.size()); }
-
-    // Total pixel height needed by the reel layout (used by GameScreen to position UI)
-    float layoutHeight() const { return m_layoutHeight; }
+    // Returns the screen-space centre of the winning card for reel at index i.
+    // Useful for placing sparkle emitters. Returns {-1,-1} if out of range.
+    sf::Vector2f winnerCentre(std::size_t i) const;
 
 private:
-    void buildLayout(OpenCount count,
-                     sf::Vector2f windowSize = { 1280.f, 720.f });
+    // Computes an appropriate LayoutScale so all reels fit in the window.
+    ReelAnimation::LayoutScale computeScale(int n, sf::Vector2u winSize,
+                                             int cols, int rows,
+                                             float availW, float availH) const;
 
-    const sf::Font*                          m_font;
+    void buildLayout(int n, sf::Vector2u winSize);
+
+    const sf::Font* m_font { nullptr };
+
     std::vector<std::unique_ptr<ReelAnimation>> m_reels;
-    std::vector<float>                       m_startDelays; // per-reel stagger (seconds)
-    std::vector<float>                       m_startTimers;
-    std::vector<bool>                        m_started;
 
-    std::vector<Item>                        m_results;
-    int                                      m_doneCount { 0 };
-    float                                    m_layoutHeight { 0.f };
+    // Stagger timing
+    std::vector<float> m_startDelays;
+    std::vector<float> m_startTimers;
+    std::vector<bool>  m_started;
 
-    std::function<void(std::vector<Item>)>   m_onAllComplete;
+    std::vector<Item>  m_results;
+    int                m_doneCount { 0 };
+
+    std::function<void(std::vector<Item>)> m_onAllComplete;
+
+    float m_layoutHeight { 0.f };
 };
