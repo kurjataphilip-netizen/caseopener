@@ -19,27 +19,11 @@ Game::Game()
     m_window.setFramerateLimit(144);
     m_window.setVerticalSyncEnabled(false);
 
-    // Font — try bundled asset first, fall back to system font
-    if (!m_font.loadFromFile("assets/fonts/font.ttf"))
-    {
-        const char* fallbacks[] = {
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "C:/Windows/Fonts/arial.ttf",
-        };
-        bool loaded = false;
-        for (const char* fb : fallbacks)
-            if (m_font.loadFromFile(fb)) { loaded = true; break; }
-        if (!loaded)
-            std::cerr << "[Game] Warning: no font loaded — text will be invisible.\n";
-    }
-
+    loadFont();
     initSystems();
 
-    // Load player save (sets m_balance; inventory not owned here — GameScreen owns it)
     Inventory dummy;
     m_playerData.load(m_balance, dummy);
-    // Inventory from save will be re-applied inside GameScreen on construction.
 
     loadScreen(ScreenID::Menu);
 }
@@ -47,20 +31,74 @@ Game::Game()
 // ── Destructor ────────────────────────────────────────────────────────────────
 Game::~Game()
 {
-    // GameScreen owns the inventory; we can't autosave inventory from here
-    // without a deeper coupling.  Balance-only save as a safety net.
     std::cout << "[Game] Shutting down. Final balance: $" << m_balance << "\n";
+}
+
+// ── loadFont ──────────────────────────────────────────────────────────────────
+void Game::loadFont()
+{
+    // Prefer a clean, modern sans-serif. Bundle one in assets/ for best results.
+    const char* candidates[] = {
+        "assets/fonts/font.ttf",
+        "assets/fonts/Roboto-Regular.ttf",
+        "assets/fonts/OpenSans-Regular.ttf",
+        // Linux
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        // macOS
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/Library/Fonts/Arial.ttf",
+        // Windows
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    };
+
+    for (const char* path : candidates)
+    {
+        if (m_font.loadFromFile(path))
+        {
+            std::cout << "[Game] Font loaded: " << path << "\n";
+            return;
+        }
+    }
+    std::cerr << "[Game] WARNING: No font found — text will be invisible. "
+                 "Place a .ttf font at assets/fonts/font.ttf\n";
 }
 
 // ── initSystems ───────────────────────────────────────────────────────────────
 void Game::initSystems()
 {
-    // Registries must be loaded before any screen that uses items/cases.
     ItemRegistry::instance().load();
     CaseRegistry::instance().load();
-
-    // Audio — missing files are silently ignored by AudioManager.
     AudioManager::instance().load();
+}
+
+// ── toggleFullscreen ──────────────────────────────────────────────────────────
+void Game::toggleFullscreen()
+{
+    m_fullscreen = !m_fullscreen;
+
+    if (m_fullscreen)
+    {
+        const sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
+        m_window.create(desktop, "Case Opener", sf::Style::Fullscreen);
+    }
+    else
+    {
+        m_window.create(sf::VideoMode(WIDTH, HEIGHT), "Case Opener",
+                        sf::Style::Titlebar | sf::Style::Close);
+    }
+
+    m_window.setFramerateLimit(144);
+    m_window.setVerticalSyncEnabled(false);
+
+    // Notify current screen so it can re-layout
+    // (screens should query game.width() / game.height() each frame)
+    if (m_currentScreen)
+        loadScreen(m_transition.pending != ScreenID::Menu
+                   ? m_transition.pending : ScreenID::Menu);
 }
 
 // ── run ───────────────────────────────────────────────────────────────────────
@@ -71,26 +109,19 @@ void Game::run()
     while (m_window.isOpen())
     {
         const float rawDt = m_clock.restart().asSeconds();
-        // Cap dt to avoid physics explosion after alt-tab / debugger pause
         const float dt    = std::min(rawDt, 0.05f);
 
         processEvents();
         update(dt);
         render();
-
-        if (m_screenSwitch)
-        {
-            m_screenSwitch = false;
-            loadScreen(m_pendingScreen);
-        }
     }
 }
 
 // ── switchScreen ──────────────────────────────────────────────────────────────
 void Game::switchScreen(ScreenID id)
 {
-    m_pendingScreen = id;
-    m_screenSwitch  = true;
+    if (m_transition.isActive()) return; // already transitioning
+    m_transition.begin(id);
 }
 
 // ── processEvents ─────────────────────────────────────────────────────────────
@@ -102,12 +133,19 @@ void Game::processEvents()
         if (event.type == sf::Event::Closed)
             m_window.close();
 
-        // Global mute toggle: M key
-        if (event.type == sf::Event::KeyPressed &&
-            event.key.code == sf::Keyboard::M)
-            AudioManager::instance().toggleMute();
+        if (event.type == sf::Event::KeyPressed)
+        {
+            if (event.key.code == sf::Keyboard::M)
+                AudioManager::instance().toggleMute();
 
-        if (m_currentScreen)
+            if (event.key.code == sf::Keyboard::F11)
+                toggleFullscreen();
+
+            if (event.key.code == sf::Keyboard::Escape && m_fullscreen)
+                toggleFullscreen();
+        }
+
+        if (m_currentScreen && !m_transition.isActive())
             m_currentScreen->handleEvent(event, *this);
     }
 }
@@ -115,10 +153,17 @@ void Game::processEvents()
 // ── update ────────────────────────────────────────────────────────────────────
 void Game::update(float dt)
 {
-    if (m_currentScreen)
+    // Handle screen transition
+    if (m_transition.isActive())
+    {
+        const bool doSwitch = m_transition.update(dt);
+        if (doSwitch)
+            loadScreen(m_transition.pending);
+    }
+
+    if (m_currentScreen && !m_transition.isActive())
         m_currentScreen->update(dt, *this);
 
-    // Periodic autosave (balance only — full save happens inside GameScreen)
     m_saveTimer += dt;
     if (m_saveTimer >= AUTOSAVE_INTERVAL)
     {
@@ -130,10 +175,13 @@ void Game::update(float dt)
 // ── render ────────────────────────────────────────────────────────────────────
 void Game::render()
 {
-    m_window.clear(sf::Color(14, 14, 22));
+    m_window.clear(sf::Color(12, 12, 20));
 
     if (m_currentScreen)
         m_currentScreen->render(m_window);
+
+    // Transition overlay drawn on top of everything
+    m_transition.render(m_window);
 
     m_window.display();
 }
@@ -141,6 +189,9 @@ void Game::render()
 // ── loadScreen ────────────────────────────────────────────────────────────────
 void Game::loadScreen(ScreenID id)
 {
+    // Destroy old screen before constructing new one
+    m_currentScreen.reset();
+
     switch (id)
     {
         case ScreenID::Menu:
@@ -157,8 +208,6 @@ void Game::loadScreen(ScreenID id)
 // ── autosave ──────────────────────────────────────────────────────────────────
 void Game::autosave()
 {
-    // Balance-only periodic save; full inventory save is triggered by GameScreen.
-    // We write a minimal stub so the balance isn't lost on crash.
     Inventory empty;
     m_playerData.save(m_balance, empty);
 }
