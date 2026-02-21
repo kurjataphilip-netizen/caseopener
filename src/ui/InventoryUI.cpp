@@ -26,7 +26,6 @@ InventoryUI::InventoryUI(sf::FloatRect bounds, const sf::Font& font, Inventory& 
 
     setBounds(bounds);
 
-    // Wire sort button
     m_sortButton.setOnClick([this]()
     {
         m_inventory.cycleSort();
@@ -35,7 +34,6 @@ InventoryUI::InventoryUI(sf::FloatRect bounds, const sf::Font& font, Inventory& 
         m_scrollY = 0.f;
     });
 
-    // Wire sell button
     m_sellButton.setOnClick([this]()
     {
         if (!m_inspectIndex) return;
@@ -45,7 +43,6 @@ InventoryUI::InventoryUI(sf::FloatRect bounds, const sf::Font& font, Inventory& 
         clampScroll();
     });
 
-    // Wire close button
     m_closeButton.setOnClick([this]() { m_inspectIndex.reset(); });
 }
 
@@ -68,10 +65,8 @@ void InventoryUI::setBounds(sf::FloatRect bounds)
     m_gridBg.setPosition(bounds.left, bounds.top + HEADER_H);
     m_gridBg.setFillColor(sf::Color(16, 16, 26));
 
-    // Position sort button inside header
     m_sortButton.setPosition({ bounds.left + 8.f, bounds.top + 7.f });
 
-    // Position inspect panel centred in grid area
     const float px = bounds.left + (bounds.width  - PANEL_W) / 2.f;
     const float py = bounds.top  + (bounds.height - PANEL_H) / 2.f;
     m_inspectBg.setSize({ PANEL_W, PANEL_H });
@@ -80,8 +75,8 @@ void InventoryUI::setBounds(sf::FloatRect bounds)
     m_inspectBg.setOutlineThickness(2.f);
     m_inspectBg.setOutlineColor(sf::Color(80, 80, 130));
 
-    m_sellButton .setPosition({ px + 10.f,              py + PANEL_H - 52.f });
-    m_closeButton.setPosition({ px + PANEL_W - 120.f,   py + PANEL_H - 52.f });
+    m_sellButton .setPosition({ px + 10.f,            py + PANEL_H - 52.f });
+    m_closeButton.setPosition({ px + PANEL_W - 120.f, py + PANEL_H - 52.f });
 
     m_inspectImageBox.setSize({ PANEL_W - 40.f, 130.f });
     m_inspectImageBox.setPosition(px + 20.f, py + 20.f);
@@ -110,10 +105,10 @@ sf::FloatRect InventoryUI::cardRect(int col, int row) const
 // ── maxScrollY ────────────────────────────────────────────────────────────────
 float InventoryUI::maxScrollY() const
 {
-    const int cols = colCount();
+    const int cols  = colCount();
     const int items = static_cast<int>(m_inventory.count());
     if (items == 0) return 0.f;
-    const int rows = (items + cols - 1) / cols;
+    const int rows    = (items + cols - 1) / cols;
     const float totalH = rows * (CARD_H + CARD_GAP) + 16.f;
     return std::max(0.f, totalH - m_gridArea.height);
 }
@@ -129,7 +124,6 @@ void InventoryUI::openInspect(std::size_t viewIndex)
 {
     m_inspectIndex = viewIndex;
 
-    // Update inspect panel outline colour to match item rarity
     auto view = m_inventory.sortedView();
     if (viewIndex < view.size())
     {
@@ -147,28 +141,24 @@ void InventoryUI::handleEvent(const sf::Event& event, const sf::RenderWindow& wi
 {
     const sf::Vector2i mouse = sf::Mouse::getPosition(window);
 
-    // Always handle sort button
     m_sortButton.handleEvent(event, window);
 
     if (m_inspectIndex)
     {
         m_sellButton .handleEvent(event, window);
         m_closeButton.handleEvent(event, window);
-        return; // block grid clicks while panel open
+        return;
     }
 
-    // Mouse wheel scroll
+    // FIX: increased impulse from 40 → 120 so scroll feels responsive
     if (event.type == sf::Event::MouseWheelScrolled)
     {
         const sf::Vector2f mf { static_cast<float>(mouse.x),
                                 static_cast<float>(mouse.y) };
         if (m_gridArea.contains(mf))
-        {
-            m_scrollVel -= event.mouseWheelScroll.delta * 40.f;
-        }
+            m_scrollVel -= event.mouseWheelScroll.delta * 120.f;
     }
 
-    // Card click
     if (event.type == sf::Event::MouseButtonReleased &&
         event.mouseButton.button == sf::Mouse::Left)
     {
@@ -202,11 +192,12 @@ void InventoryUI::update(float dt)
         m_closeButton.update(sf::Mouse::getPosition());
     }
 
-    // Scroll momentum
+    // FIX: removed * 2.5f multiplier (vel is already in px/s),
+    //      tightened friction 0.85 → 0.78 for snappier feel
     if (std::abs(m_scrollVel) > 0.5f)
     {
-        m_scrollY   += m_scrollVel * dt * 2.5f;
-        m_scrollVel *= std::pow(0.85f, dt * 60.f); // friction
+        m_scrollY   += m_scrollVel * dt;
+        m_scrollVel *= std::pow(0.78f, dt * 60.f);
         clampScroll();
     }
     else
@@ -229,7 +220,6 @@ void InventoryUI::drawHeader(sf::RenderWindow& window)
     window.draw(m_headerBg);
     window.draw(m_sortButton);
 
-    // Total value label (right-aligned)
     char buf[64];
     std::snprintf(buf, sizeof(buf), "Total: $%.2f  (%zu items)",
                   m_inventory.totalValue(), m_inventory.count());
@@ -258,7 +248,6 @@ void InventoryUI::drawGrid(sf::RenderWindow& window)
         return;
     }
 
-    // Set viewport scissor for grid
     const sf::View origView = window.getView();
     {
         const sf::Vector2u ws = window.getSize();
@@ -284,7 +273,6 @@ void InventoryUI::drawGrid(sf::RenderWindow& window)
         const int row = static_cast<int>(i) / cols;
         const sf::FloatRect cr = cardRect(col, row);
 
-        // Skip off-screen cards
         if (cr.top + cr.height < m_gridArea.top) continue;
         if (cr.top > m_gridArea.top + m_gridArea.height) break;
 
@@ -294,13 +282,13 @@ void InventoryUI::drawGrid(sf::RenderWindow& window)
 
     window.setView(origView);
 
-    // Scroll bar
+    // Scrollbar
     const float maxS = maxScrollY();
     if (maxS > 0.f)
     {
-        const float barH     = m_gridArea.height * (m_gridArea.height / (m_gridArea.height + maxS));
-        const float barY     = m_gridArea.top + (m_scrollY / maxS) * (m_gridArea.height - barH);
-        const float barX     = m_bounds.left + m_bounds.width - 6.f;
+        const float barH = m_gridArea.height * (m_gridArea.height / (m_gridArea.height + maxS));
+        const float barY = m_gridArea.top + (m_scrollY / maxS) * (m_gridArea.height - barH);
+        const float barX = m_bounds.left + m_bounds.width - 6.f;
 
         sf::RectangleShape bar({ 4.f, barH });
         bar.setFillColor(sf::Color(80, 80, 120, 160));
@@ -336,13 +324,11 @@ void InventoryUI::drawCard(sf::RenderWindow& window,
         : sf::Color(rc.r, rc.g, rc.b, 90));
     window.draw(m_cardShape);
 
-    // Rarity bar at bottom
     sf::RectangleShape bar({ cr.width, 3.f });
     bar.setFillColor(rc);
     bar.setPosition(cr.left, cr.top + cr.height - 3.f);
     window.draw(bar);
 
-    // Item image or placeholder
     if (const_cast<Item&>(item).ensureTextureLoaded() && item.hasTexture())
     {
         sf::Sprite spr = item.makeSprite();
@@ -362,7 +348,6 @@ void InventoryUI::drawCard(sf::RenderWindow& window,
         window.draw(ph);
     }
 
-    // Wear abbreviation + value
     sf::Text lbl;
     lbl.setFont(*m_font);
     lbl.setCharacterSize(10);
@@ -389,15 +374,12 @@ void InventoryUI::drawInspectPanel(sf::RenderWindow& window)
     const Item& item = *view[*m_inspectIndex];
     const sf::Color rc = item.rarityColor();
 
-    // Dim background
     sf::RectangleShape dim({ m_bounds.width, m_bounds.height });
     dim.setPosition(m_bounds.left, m_bounds.top);
     dim.setFillColor(sf::Color(0, 0, 0, 160));
     window.draw(dim);
 
     window.draw(m_inspectBg);
-
-    // Image area
     window.draw(m_inspectImageBox);
     const sf::FloatRect ib = m_inspectImageBox.getGlobalBounds();
 
@@ -412,15 +394,13 @@ void InventoryUI::drawInspectPanel(sf::RenderWindow& window)
                                          (ib.height - 16.f) / maxD);
             spr.setScale(scale, scale);
         }
-        spr.setPosition(ib.left + ib.width / 2.f,
-                        ib.top  + ib.height / 2.f);
+        spr.setPosition(ib.left + ib.width / 2.f, ib.top + ib.height / 2.f);
         window.draw(spr);
     }
 
     const sf::FloatRect pb = m_inspectBg.getGlobalBounds();
     float textY = pb.top + ib.height + 28.f;
 
-    // Helper lambda for a line of text
     auto drawLine = [&](const std::string& str, unsigned int size,
                         sf::Color col, bool centred = true)
     {
@@ -445,15 +425,13 @@ void InventoryUI::drawInspectPanel(sf::RenderWindow& window)
     };
 
     drawLine(item.displayName(), 16, sf::Color(220, 220, 230));
-    drawLine(std::string(item.rarityName()) + "  " + item.wearLabel(),
-             13, rc);
+    drawLine(std::string(item.rarityName()) + "  " + item.wearLabel(), 13, rc);
     drawLine(wearDisplayString(item.wear()), 12, sf::Color(140, 140, 160));
 
     char vbuf[32];
     std::snprintf(vbuf, sizeof(vbuf), "$%.2f", item.value());
     drawLine(vbuf, 20, sf::Color(160, 220, 160));
 
-    // Sell / Close buttons
     window.draw(m_sellButton);
     window.draw(m_closeButton);
 }
