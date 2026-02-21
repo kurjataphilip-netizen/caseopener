@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SFML/Audio.hpp>
+#include <array>
 #include <unordered_map>
 #include <string>
 #include <memory>
